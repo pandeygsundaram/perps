@@ -1,0 +1,23 @@
+
+
+// todo
+// upgrade the api server to eventually integrate the redis streams in here
+
+
+// /order,  -                        push it in redis stream  
+// /onramp  -                        push it in redis stream
+// close /order   -                  push it in redis stream    
+// /equity/available                 push it in redis stream
+// /positions/open/{marketId}        push it in redis stream
+// /positions/closed/{marketId}      get from the db
+// /orders/open/{marketId}           push it in redis stream
+// /orders/{marketId}                get from the db
+// /fills                            get from the db
+
+
+//
+so let's write the pseudo code for them and then we get done with this shit
+
+
+create order
+- get the amount and other details 
