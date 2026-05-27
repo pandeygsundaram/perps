@@ -2,5 +2,9 @@
 members = [
     "api-server",
     "matching-engine",
-    "libs/redis-client",
+    "libs/redis-client", "libs/shared-types",
 ]
+
+[workspace.dependencies]
+
+redis = { version = "0.27", features = ["tokio-comp", "streams"] }
