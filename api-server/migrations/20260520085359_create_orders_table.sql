@@ -19,7 +19,6 @@ CREATE TABLE orders (
         REFERENCES markets(id),
 
     type order_type NOT NULL,
-
     side order_side NOT NULL,
 
     price BIGINT NOT NULL,
@@ -30,3 +29,6 @@ CREATE TABLE orders (
 
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+-- // add slippage here
+-- order status??? 
