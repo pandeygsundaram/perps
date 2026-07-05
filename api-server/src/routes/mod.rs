@@ -21,3 +21,15 @@ pub fn app_routes() -> Router<PgPool> {
 
     Router::new().merge(public_routes).merge(protected_routes)
 }
+
+// what api endpoints are pending right now??
+// we'll simply wire things up from here on now!
+// so what are we gonna do is that 
+// so the thing is that umm what you have to do is that
+// /login , /signup , is there 
+// /onramp, /equity/available (get balance) is there
+// /put order to modify existing order type shit
+// /some things we are reading from the backend and some from the engine
+// engine is it ready??
+// don't think so
+// we lock in on the thread thingy now and will wrap it up!

@@ -4,11 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-chrono = "0.4.44"
-serde = "1.0.228"
-serde_json = "1.0.149"
-shared-types = { path = "../libs/shared-types" }
-tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread", "sync"] }
-redis-client = { path = "../libs/redis-client" }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 redis.workspace = true
-
+futures-util = "0.3"

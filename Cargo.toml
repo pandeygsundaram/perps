@@ -3,6 +3,7 @@ members = [
     "api-server",
     "matching-engine",
     "libs/redis-client", "libs/shared-types",
+    "practice/engine-practice",
 ]
 
 [workspace.dependencies]
