@@ -1,9 +1,11 @@
 [workspace]
+resolver = "2"
 members = [
     "api-server",
     "matching-engine",
     "libs/redis-client", "libs/shared-types",
     "practice/engine-practice",
+    "practice/macro-practice", "practice/ws-demo", "ws-server",
 ]
 
 [workspace.dependencies]

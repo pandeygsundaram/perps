@@ -2,15 +2,20 @@ use std::collections::HashMap;
 
 use crate::dispatcher::process_pending_and_current;
 use crate::fills_processor::start_fills_processing;
-use crate::markets::{start_market_workers};
+use crate::markets::markets::start_market_workers;
 use crate::publisher::publish_back_to_engine;
-use crate::settlement::start_settlement;
-use crate::types::{DispatcherToSettlementChannelProp, PublishMessages, UserBalance, WorkerOutput};
+use crate::settlement::{self, start_settlement};
+use crate::types::{
+    DispatcherToSettlementChannelProp, FillEvent, Orderbook, PublishMessages, Status, UserBalance,
+    WorkerOutput,
+};
+use redis::Value;
 use tokio::sync::mpsc;
 
 pub async fn start_processing() {
     // from dispatcher thread to settlement thread
     let (tx, rx) = mpsc::channel::<DispatcherToSettlementChannelProp>(32);
+    let (settlement_to_dispatcher_sender, settlement_to_dispatcher_receiver) = mpsc::channel::<HashMap<String, Value>>(32);
 
     // from settlement,fills processor thread to publisher thread
     let (tx2, rx2) = mpsc::channel::<PublishMessages>(32);
@@ -19,7 +24,7 @@ pub async fn start_processing() {
 
     // dispatcher thread
     tokio::spawn(async move {
-        process_pending_and_current(tx).await;
+        process_pending_and_current(tx , settlement_to_dispatcher_receiver ).await;
     });
 
     // also make a third thread settlement thread!
@@ -50,7 +55,7 @@ pub async fn start_processing() {
         // close order
         // close position
 
-        start_settlement(user_balances_store, market_senders, tx2, rx).await;
+        start_settlement(user_balances_store, market_senders, tx2, rx , settlement_to_dispatcher_sender).await;
     });
 
     //
@@ -64,15 +69,4 @@ pub async fn start_processing() {
     tokio::spawn(async move {
         publish_back_to_engine(rx2).await;
     });
-}
-
-#[cfg(test)]
-mod tests {
-
-    use crate::test::test_vloop;
-
-    #[tokio::test]
-    async fn run_vloop() {
-        test_vloop();
-    }
 }

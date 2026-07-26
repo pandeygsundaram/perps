@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::mpsc::Receiver};
 
 use redis::{
     AsyncCommands, Value,
@@ -12,6 +12,7 @@ use crate::types::DispatcherToSettlementChannelProp;
 pub async fn process_pending_and_current(
     // con: &mut MultiplexedConnection,
     tx: tokio::sync::mpsc::Sender<DispatcherToSettlementChannelProp>,
+    settlement_to_dispatcher_receiver : Receiver<HashMap<String , Value>>
 ) {
     let client = redis::Client::open("redis://127.0.0.1/").unwrap();
     let mut con = client.get_multiplexed_async_connection().await.unwrap();
@@ -63,6 +64,8 @@ async fn read_and_process_redis(
         // log it properly here
 
         // then publish it
+        // this for loop is still going one by one
+        // this is also sequential only cause it is waiting per operation
         for i in x.keys {
             println!("{:?}", i.ids[0].id);
 
@@ -86,6 +89,7 @@ async fn read_and_process_redis(
 
             send_ack_and_publish_pubsub(con, response, id).await;
         }
+        
     }
 }
 

@@ -3,9 +3,7 @@ use redis::AsyncCommands;
 
 use crate::start_processing;
 
-#[tokio::test]
-pub async fn  test_vloop() {
-
+async fn test_vloop() {
     // in the
     let client = redis::Client::open("redis://127.0.0.1/").unwrap();
     let Ok(mut con) = client.get_multiplexed_async_connection().await else {
@@ -15,7 +13,6 @@ pub async fn  test_vloop() {
         panic!("Redis pubsub acquire failed");
     };
     const STREAM: &str = "mystream";
-
 
     // subscribe simply to the channel
     let _ = pubsubcon.subscribe("mychannel").await;
@@ -136,4 +133,15 @@ pub async fn  test_vloop() {
     }
 
     joinhandler.await.unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::test::test_vloop;
+
+    #[tokio::test]
+    async fn run_vloop() {
+        test_vloop().await;
+    }
 }

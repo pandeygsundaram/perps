@@ -1,32 +1,60 @@
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, sync::mpsc::Sender, time::Duration};
 
+use redis::Value;
 use tokio::{
     sync::mpsc::{Receiver, Sender},
     time::sleep,
 };
 
 use crate::types::{
-    DispatcherToSettlementChannelProp, EngineCommands, IncomingOrder, PublishMessages, UserBalance,
+    DispatcherToSettlementChannelProp, EngineCommands, ErrorOrigin, IncomingOrder, PublishMessages,
+    UserBalance, WorkerCommands,
 };
 
 pub async fn start_settlement(
     mut user_balances_store: HashMap<String, UserBalance>,
-    market_senders : HashMap<String , Sender<IncomingOrder>>,
+    market_senders: HashMap<String, Sender<WorkerCommands>>,
     tx2: Sender<PublishMessages>,
     mut rx: Receiver<DispatcherToSettlementChannelProp>,
+    settlement_to_dispatcher_sender: Sender<HashMap<String, Value>>
 ) {
     while let Some(event) = rx.recv().await {
         let Some(data) = event.data.get("data") else {
-            panic!("DATA FIELD NOT FOUND IN THE REDIS COMMAND")
+            send_error_msg_and_ack(
+                "DATA FIELD NOT FOUND IN THE REDIS COMMAND".to_string(),
+                event,
+                &tx2,
+                ErrorOrigin::Settlement,
+            )
+            .await;
+            continue;
         };
 
         // did something wierdly converting Type Value to string
         let data_str = match data {
             redis::Value::BulkString(bytes) => String::from_utf8(bytes.clone()).unwrap(),
-            _ => panic!("unexpected value type"),
+            _ => {
+                send_error_msg_and_ack(
+                    "UnExpected value type received".to_string(),
+                    event,
+                    &tx2,
+                    ErrorOrigin::Settlement,
+                )
+                .await;
+                continue;
+            }
         };
 
-        let cmd = serde_json::from_str::<EngineCommands>(&data_str).unwrap();
+        let Ok(cmd) = serde_json::from_str::<EngineCommands>(&data_str) else {
+            send_error_msg_and_ack(
+                "Failed to Parse the variables".to_string(),
+                event,
+                &tx2,
+                ErrorOrigin::Settlement,
+            )
+            .await;
+            continue;
+        };
 
         match cmd {
             EngineCommands::AddBalance {
@@ -149,16 +177,73 @@ pub async fn start_settlement(
                 price,
                 margin,
             } => {
+                // already data is parsed , but we'll have to check it if these values exist or not! and
+                // throw error if they don't
 
-                // depending upon the market just simply send the order !!
-                // here get the correct tx for the market
-                // then basically push it in there
+                let Some(user_balance) = user_balances_store.get_mut(&user_id) else {
+                    // throw errow user not found!
+                    send_error_msg_and_ack(
+                        "User not found".to_string(),
+                        event,
+                        &tx2,
+                        ErrorOrigin::Settlement,
+                    )
+                    .await;
+                    continue;
+                };
+                // check if user has money or not
+                if user_balance.available < margin {
+                    send_error_msg_and_ack(
+                        "Not Enough Funds to place this order".to_string(),
+                        event,
+                        &tx2,
+                        ErrorOrigin::Settlement,
+                    )
+                    .await;
+                    continue;
+                }
 
-                // then the market is going to basically pick up the shit
-                // and then it is going to try_match it
-                // return the fills to the fills processor
+                // deduct the margin for the user
+                user_balance.available -= margin;
+                user_balance.locked += margin;
 
                 println!("USER MONEY DEDUCTED SUCCESSFULLY");
+
+                // create open order object!
+                // send it to the marker worker
+
+                // exctract market sender
+                let Some(curr_sender) = market_senders.get(&market) else {
+                    send_error_msg_and_ack(
+                        "Market Does not Exists".to_string(),
+                        event,
+                        &tx2,
+                        ErrorOrigin::Settlement,
+                    )
+                    .await;
+                    continue;
+                };
+
+                curr_sender
+                    .send(WorkerCommands::CreateOrder {
+                        request_id,
+                        user_id,
+                        qty,
+                        side,
+                        market,
+                        order_type,
+                        max_slippage,
+                        price,
+                        margin,
+                    })
+                    .await;
+
+                // get rid of one shot channel and let's make it a mpsc!
+
+                // if the order is market -> wait for reply from the fills processor
+                // for the amount of fills processed and the not filled quantity is going to be returned !!
+                // update the user balance and send the ack to the dispatcher
+
             }
 
             EngineCommands::CancelOrder {
@@ -167,7 +252,6 @@ pub async fn start_settlement(
                 order_id,
                 market,
             } => {
-                
                 println!("Create order command received");
                 // println!("{:?}", c);
                 // fire_and_wait_for_responce_from_settlement(tx.clone(), curr_map).await;
@@ -191,4 +275,19 @@ pub async fn start_settlement(
         println!("REPLY SENT FROM THE SETTLEMENT THREAD");
         sleep(Duration::from_secs(2)).await;
     }
+}
+
+pub async fn send_error_msg_and_ack(
+    msg: String,
+    event: DispatcherToSettlementChannelProp,
+    message_publisher: &Sender<PublishMessages>,
+    origin: ErrorOrigin,
+) {
+    // send a message to the publisher for that request id
+    message_publisher
+        .send(PublishMessages::ErrorEncountered { msg, origin })
+        .await;
+
+    // send a ack via the one shot !
+    event.reply.send(event.data);
 }
