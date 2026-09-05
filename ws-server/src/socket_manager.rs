@@ -1,81 +1,138 @@
-use std::time::{Duration, Instant};
-
-use futures_util::StreamExt;
+use futures_util::{StreamExt, stream::SplitSink};
 
 use axum::{
-    extract::ws::{Message, WebSocket, WebSocketUpgrade},
+    extract::{
+        State,
+        ws::{Message, WebSocket, WebSocketUpgrade},
+    },
     response::IntoResponse,
 };
+use tokio::sync::mpsc::{self, UnboundedReceiver};
+use uuid::Uuid;
 
-pub async fn ws_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
+use crate::{
+    AppState,  types::{ClientMessage, SenderChannelObject, WsMethod}, 
+};
+
+pub async fn ws_handler(ws: WebSocketUpgrade, app_state: State<AppState>) -> impl IntoResponse {
     println!("So here we upgraded the socket to the web socket basically");
-    ws.on_upgrade(handle_socket)
+
+    ws.on_upgrade(move |socket| handle_socket(socket, app_state))
 }
 
-pub async fn handle_socket(mut socket: WebSocket) {
-    let mut ping_timer = tokio::time::interval(Duration::from_secs(2));
+// apparently the axum server spawns multiple tasks for this function
+// so all of them live simultaneously waiting for some message to arrive from the user side!
 
-    let mut last_pong = Instant::now();
+pub async fn handle_socket(mut socket: WebSocket, app_state: State<AppState>) {
+    let (mut sender, mut reciever) = socket.split();
+
+    // apparently i have gotten the map
+    // but the map needs to be inside the
+    // that function
+
+    // now the sender is going to be spawned in a seperate task
+    // because we need to do that shit with this human!
+    let (tx, rx) = mpsc::unbounded_channel::<SenderChannelObject>();
+
+    let user_id: Uuid = {
+        let users = &mut app_state.user_state.write().await;
+        users.add_user(tx)
+    };
+
+    // this tx will be saved inside the user
+    // and the rx will be passed to the receiver
+
+    tokio::spawn(async move { handle_sender(rx, sender, &user_id).await });
+
+    // call the save user method for this particular tx
+
+    // basically the thing is that i have to next go ahead and lock in
+    // so now i will go ahead and write those methods/funcitons
 
     loop {
-        tokio::select! {
-            msg = socket.next() =>  {
-                
+        let msg = reciever.next().await;
 
-                match msg {
+        match msg {
+            Some(Ok(Message::Text(text))) => {
+                let Ok(client_msg) = serde_json::from_str::<ClientMessage>(&text) else {
+                    panic!("Wrong evenet found");
+                };
+
+                match client_msg.method {
+                    WsMethod::Subscribe => {
+                        for channel in client_msg.params {
+                            println!("SUBSCRIBE: {channel}");
+
+                            // get the write lock of the subscription manager
+                            // call the subscribe method
 
 
-                    // This is where the actual frame handling will go.
-                    // For learning, try implementing one case at a time:
-                    //   1) Text echo
-                    //   2) Pong response
-                    //   3) Close handling
-                    //   4) Binary ignore/handling
 
-                    Some(Ok(Message::Text(text)))=>{
-                        let x = format!("message reveived: {text}" );
-                        if socket.send(Message::Text(x)).await.is_err() {
 
-                            break;
+
+
                         }
-                    },
+                        // basically here only we will now start passing things to the
+                        // subscription manager
+                    }
+                    WsMethod::Unsubscribe => {
+                        for channel in client_msg.params {
+                            println!("UNSUBSCRIBE: {channel}");
 
-                    Some(Ok (Message::Pong(_)))=>{
-                        println!("Pong received!");
-                        last_pong = Instant::now();
+                            // get the write lock
+                            // call the unsubscribe method
 
-                        // save the ping time
-                        // respond with a pong
-                    },
 
-                    Some(Ok(Message::Close(_))) | None | Some(Err(_)) =>{
-                        break;
-                    },
 
-                    _ => { }
+
+                        }
+
+                        // again here also it will pass that data to the
+                        // unsubscribe thingy
+                    }
+
+
                 }
+
+                // if socket.send(Message::Text(xy)).await.is_err() {
+                //     break;
+                // }
             }
-            _ = ping_timer.tick() => {
+
+            Some(Ok(Message::Close(_))) | None | Some(Err(_)) => {
+                break;
 
 
 
-                // This branch is where heartbeat logic belongs.
-                // Typical pattern:
-                // - send Ping
-                // - check if the last Pong is too old
-                // - close the socket if the peer is unresponsive
-                //
-                // For now, just use this branch to understand that websocket
-                // servers are not purely reactive; they often need timers too.
-
-
-
-                let _ = last_pong;
+                
+                
             }
+            
+            _ => {}
         }
+        
+        
     }
+    
+    {
+        let subscriptions =    app_state.subscription_state.write().await ;
+        subscriptions.connection_left(  );
+    }
+    
+    
+    // get the usermanager access 
+    // call the remove user method
 
-    // If we get here, the socket was closed, errored, or the heartbeat failed.
+
+
+
 
     println!("Client disconnected");
+}
+
+pub async fn handle_sender(
+    rx: UnboundedReceiver<SenderChannelObject>,
+    mut sender: SplitSink<WebSocket, Message>,
+    user_id: &Uuid,
+) {
 }
