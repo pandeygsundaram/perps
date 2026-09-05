@@ -104,8 +104,3 @@ pub enum WsMethod {
     Subscribe,
     Unsubscribe,
 }
-
-pub struct SenderChannelObject{
-    pub id : i32 ,
-    pub message : String 
-}

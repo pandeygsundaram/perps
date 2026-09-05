@@ -1,12 +1,25 @@
 use std::{collections::HashMap, sync::OnceLock};
 use tokio::sync::{RwLock, mpsc::UnboundedSender};
 
-use crate::types::SenderChannelObject;
+use crate::types::MarketEvents ;
 use uuid::Uuid;
 
 pub struct UserManager {
+    // userid -> user
     users: HashMap<Uuid, User>,
 }
+
+// now this enforces that thorughout the code there is going to be only a single instance for the usermanagerstate!!!
+// there can't be any more than one!
+static INSTANCE: OnceLock<RwLock<UserManager>> = OnceLock::new();
+
+// the onelock ensures that in the memory that value exsits only once!!
+// it can't be created again
+
+// rw lock will be on the manager instance
+// rather than the hashmap
+// because we don't want to expose the hashmap
+// instead the
 
 impl UserManager {
     fn new() -> UserManager {
@@ -19,9 +32,9 @@ impl UserManager {
         INSTANCE.get_or_init(|| RwLock::new(UserManager::new()))
     }
 
-    pub fn add_user(&mut self, tx: UnboundedSender<SenderChannelObject>) -> Uuid {
+    pub fn add_user(&mut self, tx: UnboundedSender<MarketEvents>) -> Uuid {
         let id = Uuid::new_v4();
-        self.users.insert(id, User::new(id, tx));
+        self.users.insert(id, User::new( tx));
         id
     }
 
@@ -29,7 +42,7 @@ impl UserManager {
         self.users.remove(&id);
     }
 
-    pub fn emit(&self, id: &Uuid, message: SenderChannelObject) {
+    pub fn emit(&self, id: &Uuid, message: MarketEvents) {
         // get the user from self
         // then call the send
 
@@ -47,25 +60,13 @@ impl UserManager {
     }
 }
 
-// now this enforces that thorughout the code there is going to be only a single instance for the usermanagerstate!!!
-// there can't be any more than one!
-static INSTANCE: OnceLock<RwLock<UserManager>> = OnceLock::new();
-
-// the onelock ensures that in the memory that value exsits only once!!
-// it can't be created again
-
-// rw lock will be on the manager instance
-// rather than the hashmap
-// because we don't want to expose the hashmap
-// instead the
 
 struct User {
-    pub id: Uuid,
-    pub tx: UnboundedSender<SenderChannelObject>,
+    pub tx: UnboundedSender<MarketEvents>,
 }
 
 impl User {
-    fn new(id: Uuid, tx: UnboundedSender<SenderChannelObject>) -> User {
-        User { id, tx }
+    fn new( tx: UnboundedSender<MarketEvents>) -> User {
+        User {  tx }
     }
 }

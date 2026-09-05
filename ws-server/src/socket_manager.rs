@@ -1,4 +1,4 @@
-use futures_util::{StreamExt, stream::SplitSink};
+use futures_util::{SinkExt, StreamExt, stream::SplitSink};
 
 use axum::{
     extract::{
@@ -11,7 +11,8 @@ use tokio::sync::mpsc::{self, UnboundedReceiver};
 use uuid::Uuid;
 
 use crate::{
-    AppState,  types::{ClientMessage, SenderChannelObject, WsMethod}, 
+    AppState,
+    types::{ClientMessage, MarketEvents, WsMethod},
 };
 
 pub async fn ws_handler(ws: WebSocketUpgrade, app_state: State<AppState>) -> impl IntoResponse {
@@ -23,8 +24,8 @@ pub async fn ws_handler(ws: WebSocketUpgrade, app_state: State<AppState>) -> imp
 // apparently the axum server spawns multiple tasks for this function
 // so all of them live simultaneously waiting for some message to arrive from the user side!
 
-pub async fn handle_socket(mut socket: WebSocket, app_state: State<AppState>) {
-    let (mut sender, mut reciever) = socket.split();
+pub async fn handle_socket(socket: WebSocket, app_state: State<AppState>) {
+    let (sender, mut reciever) = socket.split();
 
     // apparently i have gotten the map
     // but the map needs to be inside the
@@ -32,7 +33,7 @@ pub async fn handle_socket(mut socket: WebSocket, app_state: State<AppState>) {
 
     // now the sender is going to be spawned in a seperate task
     // because we need to do that shit with this human!
-    let (tx, rx) = mpsc::unbounded_channel::<SenderChannelObject>();
+    let (tx, rx) = mpsc::unbounded_channel::<MarketEvents>();
 
     let user_id: Uuid = {
         let users = &mut app_state.user_state.write().await;
@@ -42,7 +43,7 @@ pub async fn handle_socket(mut socket: WebSocket, app_state: State<AppState>) {
     // this tx will be saved inside the user
     // and the rx will be passed to the receiver
 
-    tokio::spawn(async move { handle_sender(rx, sender, &user_id).await });
+    tokio::spawn(async move { handle_sender(rx, sender).await });
 
     // call the save user method for this particular tx
 
@@ -65,12 +66,6 @@ pub async fn handle_socket(mut socket: WebSocket, app_state: State<AppState>) {
 
                             // get the write lock of the subscription manager
                             // call the subscribe method
-
-
-
-
-
-
                         }
                         // basically here only we will now start passing things to the
                         // subscription manager
@@ -81,17 +76,11 @@ pub async fn handle_socket(mut socket: WebSocket, app_state: State<AppState>) {
 
                             // get the write lock
                             // call the unsubscribe method
-
-
-
-
                         }
 
                         // again here also it will pass that data to the
                         // unsubscribe thingy
                     }
-
-
                 }
 
                 // if socket.send(Message::Text(xy)).await.is_err() {
@@ -101,38 +90,39 @@ pub async fn handle_socket(mut socket: WebSocket, app_state: State<AppState>) {
 
             Some(Ok(Message::Close(_))) | None | Some(Err(_)) => {
                 break;
-
-
-
-                
-                
             }
-            
-            _ => {}
+
+            _ => {
+                println!("Something wierd happening")
+            }
         }
-        
-        
     }
-    
+
     {
-        let subscriptions =    app_state.subscription_state.write().await ;
-        subscriptions.connection_left(  );
+        // unsubscribe + delete via usermanager
+        let subscriptions = &mut app_state.subscription_state.write().await;
+        subscriptions.connection_left(user_id).await;
     }
-    
-    
-    // get the usermanager access 
-    // call the remove user method
-
-
-
-
 
     println!("Client disconnected");
 }
 
 pub async fn handle_sender(
-    rx: UnboundedReceiver<SenderChannelObject>,
+    mut rx: UnboundedReceiver<MarketEvents>,
     mut sender: SplitSink<WebSocket, Message>,
-    user_id: &Uuid,
 ) {
+    while let Some(event) = rx.recv().await {
+        let Ok(json) = serde_json::to_string(&event) else {
+            eprintln!("Failed to serialize market event");
+            continue;
+        };
+        if let Err(e) = sender.send(Message::Text(json.into())).await {
+            eprintln!("Failed to send WebSocket message: {e}");
+            break;
+        }
+    }
+
+    // just need to wrap up this one now
+    // we don't need the user_id
+    // cause the sender itself belongs to that user socket
 }

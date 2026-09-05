@@ -44,14 +44,24 @@ pub async fn start_redis(
         // so we need to filter it like that
 
 
+        // get the instance of the subscription manager 
+        // and call the broadcast method!
 
+        let subscription_handler = SubscriptionManager::get_instance().read().await;
 
+        // will have to parse the data 
+        // like the senderchannelobject needs to be modified! 
+        // and we also need to do some kinda processing on the event types and the actual senderchannelobject
 
-
+        
+        
+        
         let Ok(events) = serde_json::from_str::<MarketEvents>(&payload) else {
             panic!("Wrong evenet found")
         };
-        println!("{events :?}");
+        
+        subscription_handler.broadcast(msg.get_channel_name().to_string(), events).await;
+        // now here we will have to build out own sender channel object 
 
         // so we have found the events we just have to pass
         // the events to these to the subscription manager simply

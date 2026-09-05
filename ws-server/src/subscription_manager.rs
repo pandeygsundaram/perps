@@ -5,7 +5,7 @@ use std::{
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::{types::SenderChannelObject,  user_manager::UserManager};
+use crate::{types::MarketEvents, user_manager::UserManager};
 
 pub struct SubscriptionManager {
     subscriptions: HashMap<Uuid, HashSet<String>>,
@@ -67,7 +67,7 @@ impl SubscriptionManager {
 
     }
 
-    pub async fn broadcast(&self , channel : String , message : SenderChannelObject ) {
+    pub async fn broadcast(&self , channel : String , message : MarketEvents ) {
         // for all the user id in the reversesubscription call user.emit
 
         // get all the users in that channel
