@@ -29,7 +29,7 @@ impl UserManager {
         self.users.remove(&id);
     }
 
-    pub fn emit(&self, id: Uuid, message: SenderChannelObject) {
+    pub fn emit(&self, id: &Uuid, message: SenderChannelObject) {
         // get the user from self
         // then call the send
 
