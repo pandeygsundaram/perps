@@ -11,8 +11,7 @@ use tokio::sync::mpsc::{self, UnboundedReceiver};
 use uuid::Uuid;
 
 use crate::{
-    AppState,
-    types::{ClientMessage, MarketEvents, WsMethod},
+    AppState, types::{ClientMessage,  WsMethod}, user_manager::UserManager,
 };
 
 pub async fn ws_handler(ws: WebSocketUpgrade, app_state: State<AppState>) -> impl IntoResponse {
@@ -33,7 +32,7 @@ pub async fn handle_socket(socket: WebSocket, app_state: State<AppState>) {
 
     // now the sender is going to be spawned in a seperate task
     // because we need to do that shit with this human!
-    let (tx, rx) = mpsc::unbounded_channel::<MarketEvents>();
+    let (tx, rx) = mpsc::unbounded_channel::<String>();
 
     let user_id: Uuid = {
         let users = &mut app_state.user_state.write().await;
@@ -61,8 +60,17 @@ pub async fn handle_socket(socket: WebSocket, app_state: State<AppState>) {
 
                 match client_msg.method {
                     WsMethod::Subscribe => {
+                        let mut subs_handler = app_state.subscription_state.write().await;
                         for channel in client_msg.params {
                             println!("SUBSCRIBE: {channel}");
+
+
+                            // get the subscription manager lock
+                            // subscribe the user
+
+                            subs_handler.subscribe(user_id, channel);
+
+
 
                             // get the write lock of the subscription manager
                             // call the subscribe method
@@ -73,6 +81,11 @@ pub async fn handle_socket(socket: WebSocket, app_state: State<AppState>) {
                     WsMethod::Unsubscribe => {
                         for channel in client_msg.params {
                             println!("UNSUBSCRIBE: {channel}");
+
+
+                            let mut subs_handler = app_state.subscription_state.write().await;
+                            subs_handler.unsubscribe(user_id , channel);
+
 
                             // get the write lock
                             // call the unsubscribe method
@@ -103,20 +116,21 @@ pub async fn handle_socket(socket: WebSocket, app_state: State<AppState>) {
         let subscriptions = &mut app_state.subscription_state.write().await;
         subscriptions.connection_left(user_id).await;
     }
+    // remove the user from the user map
+    {
+        let user_handler = &mut UserManager::get_instance().write().await;
+        user_handler.remove_user(user_id);
+    }
 
     println!("Client disconnected");
 }
 
 pub async fn handle_sender(
-    mut rx: UnboundedReceiver<MarketEvents>,
+    mut rx: UnboundedReceiver<String>,
     mut sender: SplitSink<WebSocket, Message>,
 ) {
     while let Some(event) = rx.recv().await {
-        let Ok(json) = serde_json::to_string(&event) else {
-            eprintln!("Failed to serialize market event");
-            continue;
-        };
-        if let Err(e) = sender.send(Message::Text(json.into())).await {
+        if let Err(e) = sender.send(Message::Text(event.into())).await {
             eprintln!("Failed to send WebSocket message: {e}");
             break;
         }
