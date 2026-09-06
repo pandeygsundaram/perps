@@ -5,7 +5,6 @@ use std::{
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::{types::MarketEvents, user_manager::UserManager};
 
 pub struct SubscriptionManager {
     subscriptions: HashMap<Uuid, HashSet<String>>,
@@ -16,7 +15,11 @@ static INSTANCE: OnceLock<RwLock<SubscriptionManager>> = OnceLock::new();
 
 impl SubscriptionManager {
     fn new() -> SubscriptionManager {
-        todo!()
+        SubscriptionManager{
+            subscriptions: HashMap::new(),
+            reverse_subscriptions: HashMap::new()
+        }
+        
     }
     pub fn get_instance() -> &'static RwLock<SubscriptionManager> {
         INSTANCE.get_or_init(|| RwLock::new(SubscriptionManager::new()))
@@ -37,29 +40,51 @@ impl SubscriptionManager {
 
 
     }
-    pub fn unsubscribe(&mut self , user_id : Uuid) {
+    pub fn unsubscribe(&mut self , user_id : Uuid , channel : String) {
         // remove the user id from the subscriptions map
         // remove the userid frmo th reverse subscriptions map
+
+
+
+        // when i am doing unsubscribe 
+        // then subscription[userid].remove(channel)
+
+        // if subscription[userid].size()==0 
+        // subscriptions.remove(userid)
         
-        let Some( users_channel) = self.subscriptions.remove(&user_id) else {
+        
+
+
+        let Some( users_channel) = self.subscriptions.get_mut(&user_id) else {
             // user not found
             eprint!("User not found");
-
-
             return;
+        }; 
+        users_channel.remove(&channel);
+        if users_channel.is_empty(){
+            self.subscriptions.remove(&user_id);
+        } 
+
+        // reveresesubscription[channel].remove(userid)
+        // if reveresesubscription[channel].isempty()
+        // reveresesubscriptions.remove(channel)
+
+
+        // now pop out user if frmo there
+        if let Some(user_data)=  self.reverse_subscriptions.get_mut(&channel)  {
+            
+            user_data.remove(&user_id);
+
+            if user_data.is_empty(){
+                self.reverse_subscriptions.remove(&channel);
+            }                
+        } else {
+            eprintln!("Either channel not found , yeah channel not found");
         };
 
-        for i in users_channel{
-            // now pop out user if frmo there
-            if let Some(user_data)=  self.reverse_subscriptions.get_mut(&i)  {
-                
-                user_data.remove(&user_id);
 
-                if user_data.is_empty(){
-                    user_data.remove(&user_id);
-                }                
-            };
-        }
+        
+
         println!("Properly ub subscribed the user");
 
 
@@ -67,40 +92,47 @@ impl SubscriptionManager {
 
     }
 
-    pub async fn broadcast(&self , channel : String , message : MarketEvents ) {
+    pub  fn broadcast(&self , channel : String  ) -> Result<HashSet<Uuid> , String> {
         // for all the user id in the reversesubscription call user.emit
 
         // get all the users in that channel
-        let Some(channel_subs) = self.reverse_subscriptions.get(&channel) else {
+        let Some(channel_subs) = self.reverse_subscriptions.get(&channel).cloned() else {
 
             eprintln!("Wrong channel name or channel not found");
-            return;
+            return Err("channel not found".to_string());
         } ;
-
-        // get the usermanager instance
-        let user_handler = & UserManager::get_instance().read().await;
-
-
-        // call the emit method on them
-        for id in channel_subs{
-            user_handler.emit(id, message.clone());
-
-        }
 
 
         println!("Called the broadcast successfully");
+        Ok(channel_subs)
 
 
     }
     pub async fn connection_left(&mut self , user_id : Uuid) {
 
         // call unsubsribe on him
-        self.unsubscribe(user_id);
+        let Some(channels) =  self.subscriptions.remove(&user_id) else {
+            eprintln!("User Not Found");
+            return; 
+        };
+        for i in channels{
+            let  Some(user_data) =self.reverse_subscriptions.get_mut(&i) else {
+                eprintln!("{i} not found in the reveresesubscription " );
+                continue;
+            };
+            user_data.remove(&user_id);
+
+            // if channel is no more pointing to any users remove the channel
+            if user_data.is_empty(){
+                self.reverse_subscriptions.remove(&i);
+            }
+        }
+
+
 
         // maybe a way to call the delete method on user from the usermanager
         // here delete him from the usermanager map as well 
-        let user_handler = &mut UserManager::get_instance().write().await;
-        user_handler.remove_user(user_id);
+
 
     }
 }
