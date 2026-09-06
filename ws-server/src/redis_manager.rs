@@ -1,12 +1,10 @@
 use futures_util::StreamExt;
-use tokio::sync::RwLock;
 
-use crate::{subscription_manager::SubscriptionManager, types::MarketEvents};
+use crate::{
+    subscription_manager::SubscriptionManager, types::MarketEvents, user_manager::UserManager,
+};
 
-pub async fn start_redis(
-    _subs_state: &RwLock<SubscriptionManager>,
-    markets: Vec<String>,
-) -> redis::RedisResult<()> {
+pub async fn start_redis(markets: Vec<String>) -> redis::RedisResult<()> {
     let client = redis::Client::open("redis://127.0.0.1/")?;
     let mut pubsub = client.get_async_pubsub().await?;
 
@@ -38,30 +36,45 @@ pub async fn start_redis(
 
         println!("channel '{}': {}", msg.get_channel_name(), payload);
 
-        // channel is basically like 
+        // channel is basically like
         // eventtype . market
 
         // so we need to filter it like that
 
-
-        // get the instance of the subscription manager 
+        // get the instance of the subscription manager
         // and call the broadcast method!
 
-        let subscription_handler = SubscriptionManager::get_instance().read().await;
 
-        // will have to parse the data 
-        // like the senderchannelobject needs to be modified! 
+        // will have to parse the data
+        // like the senderchannelobject needs to be modified!
         // and we also need to do some kinda processing on the event types and the actual senderchannelobject
 
-        
-        
-        
-        let Ok(events) = serde_json::from_str::<MarketEvents>(&payload) else {
-            panic!("Wrong evenet found")
+        let Ok(event) = serde_json::from_str::<MarketEvents>(&payload) else {
+            eprintln!("Wrong evenet found");
+            continue;
         };
-        
-        subscription_handler.broadcast(msg.get_channel_name().to_string(), events).await;
-        // now here we will have to build out own sender channel object 
+
+        let Ok(message) = serde_json::to_string(&event) else {
+            eprintln!("Failed to serialize market event");
+            continue;
+        };
+
+        // took lock of the subs manager and then got rid of it
+
+        let users = {
+            let subs = SubscriptionManager::get_instance().read().await;
+            subs.broadcast(msg.get_channel_name().to_string()).ok()
+        };
+
+        // now here tool lock of user manager and got rid of it once events are sent
+        if let Some(users) = users {
+            let user_handler = UserManager::get_instance().read().await;
+            for id in users {
+                user_handler.emit(&id, message.clone());
+            }
+        }
+
+        // now here we will have to build out own sender channel object
 
         // so we have found the events we just have to pass
         // the events to these to the subscription manager simply
