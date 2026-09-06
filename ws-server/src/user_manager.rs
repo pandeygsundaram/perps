@@ -1,7 +1,6 @@
 use std::{collections::HashMap, sync::OnceLock};
 use tokio::sync::{RwLock, mpsc::UnboundedSender};
 
-use crate::types::MarketEvents ;
 use uuid::Uuid;
 
 pub struct UserManager {
@@ -32,7 +31,7 @@ impl UserManager {
         INSTANCE.get_or_init(|| RwLock::new(UserManager::new()))
     }
 
-    pub fn add_user(&mut self, tx: UnboundedSender<MarketEvents>) -> Uuid {
+    pub fn add_user(&mut self, tx: UnboundedSender<String>) -> Uuid {
         let id = Uuid::new_v4();
         self.users.insert(id, User::new( tx));
         id
@@ -42,7 +41,7 @@ impl UserManager {
         self.users.remove(&id);
     }
 
-    pub fn emit(&self, id: &Uuid, message: MarketEvents) {
+    pub fn emit(&self, id: &Uuid, message: String) {
         // get the user from self
         // then call the send
 
@@ -62,11 +61,11 @@ impl UserManager {
 
 
 struct User {
-    pub tx: UnboundedSender<MarketEvents>,
+    pub tx: UnboundedSender<String>,
 }
 
 impl User {
-    fn new( tx: UnboundedSender<MarketEvents>) -> User {
+    fn new( tx: UnboundedSender<String>) -> User {
         User {  tx }
     }
 }
